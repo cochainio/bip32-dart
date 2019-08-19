@@ -20,7 +20,8 @@ class NetworkType {
   NetworkType({required this.wif, required this.bip32});
 }
 
-final _BITCOIN = new NetworkType(wif: 0x80, bip32: new Bip32Type(public: 0x0488b21e, private: 0x0488ade4));
+final BITCOIN = new NetworkType(wif: 0x80, bip32: new Bip32Type(public: 0x0488b21e, private: 0x0488ade4));
+final TESTNET = new NetworkType(wif: 0xef, bip32: new Bip32Type(public: 0x043587cf, private: 0x04358394));
 const HIGHEST_BIT = 0x80000000;
 const UINT31_MAX = 2147483647; // 2^31 - 1
 const UINT32_MAX = 4294967295; // 2^32 - 1
@@ -155,10 +156,17 @@ class BIP32 {
   factory BIP32.fromBase58(String string, [NetworkType? nw]) {
     Uint8List buffer = bs58check.decode(string);
     if (buffer.length != 78) throw new ArgumentError("Invalid buffer length");
-    NetworkType network = nw ?? _BITCOIN;
     ByteData bytes = buffer.buffer.asByteData();
     // 4 bytes: version bytes
     var version = bytes.getUint32(0);
+    NetworkType network = nw;
+    if (network == null) {
+      if (version == BITCOIN.bip32.private || version == BITCOIN.bip32.public) {
+        network = BITCOIN;
+      } else {
+        network = TESTNET;
+      }
+    }
     if (version != network.bip32.private && version != network.bip32.public) {
       throw new ArgumentError("Invalid network version");
     }
@@ -197,7 +205,7 @@ class BIP32 {
   }
 
   factory BIP32.fromPublicKey(Uint8List publicKey, Uint8List chainCode, [NetworkType? nw]) {
-    NetworkType network = nw ?? _BITCOIN;
+    NetworkType network = nw ?? BITCOIN;
     if (!ecc.isPoint(publicKey)) {
       throw new ArgumentError("Point is not on the curve");
     }
@@ -205,7 +213,7 @@ class BIP32 {
   }
 
   factory BIP32.fromPrivateKey(Uint8List privateKey, Uint8List chainCode, [NetworkType? nw]) {
-    NetworkType network = nw ?? _BITCOIN;
+    NetworkType network = nw ?? BITCOIN;
     if (privateKey.length != 32) throw new ArgumentError("Expected property privateKey of type Buffer(Length: 32)");
     if (!ecc.isPrivate(privateKey)) throw new ArgumentError("Private key not in range [1, n]");
     return new BIP32(privateKey, null, chainCode, network);
@@ -218,7 +226,7 @@ class BIP32 {
     if (seed.length > 64) {
       throw new ArgumentError("Seed should be at most 512 bits");
     }
-    NetworkType network = nw ?? _BITCOIN;
+    NetworkType network = nw ?? BITCOIN;
     final I = hmacSHA512(utf8.encode("Bitcoin seed") as Uint8List, seed);
     final IL = I.sublist(0, 32);
     final IR = I.sublist(32);
