@@ -159,7 +159,7 @@ class BIP32 {
     ByteData bytes = buffer.buffer.asByteData();
     // 4 bytes: version bytes
     var version = bytes.getUint32(0);
-    NetworkType network = nw;
+    NetworkType? network = nw;
     if (network == null) {
       if (version == BITCOIN.bip32.private || version == BITCOIN.bip32.public) {
         network = BITCOIN;

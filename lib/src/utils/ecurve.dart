@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:hex/hex.dart';
 import "package:pointycastle/ecc/curves/secp256k1.dart";
 import "package:pointycastle/api.dart" show PrivateKeyParameter, PublicKeyParameter;
-import 'package:pointycastle/ecc/api.dart' show ECPrivateKey, ECPublicKey, ECSignature, ECPoint;
+import 'package:pointycastle/ecc/api.dart' show ECPrivateKey, ECPublicKey, ECSignature, ECSignatureV, ECPoint;
 import "package:pointycastle/signers/ecdsa_signer.dart";
 import 'package:pointycastle/macs/hmac.dart';
 import "package:pointycastle/digests/sha256.dart";
@@ -74,7 +74,7 @@ bool isSignature(Uint8List value) {
   Uint8List r = value.sublist(0, 32);
   Uint8List s = value.sublist(32, 64);
 
-  return value.length == 64 && _compare(r, EC_GROUP_ORDER as Uint8List) < 0 && _compare(s, EC_GROUP_ORDER as Uint8List) < 0;
+  return (value.length == 64 || value.length == 65) && _compare(r, EC_GROUP_ORDER as Uint8List) < 0 && _compare(s, EC_GROUP_ORDER as Uint8List) < 0;
 }
 
 bool _isPointCompressed(Uint8List p) {
@@ -124,20 +124,24 @@ Uint8List? privateAdd(Uint8List d, Uint8List tweak) {
   return dt;
 }
 
-Uint8List sign(Uint8List hash, Uint8List x) {
+Uint8List sign(Uint8List hash, Uint8List x, {bool recover = false}) {
   if (!isScalar(hash)) throw new ArgumentError(THROW_BAD_HASH);
   if (!isPrivate(x)) throw new ArgumentError(THROW_BAD_PRIVATE);
-  ECSignature sig = deterministicGenerateK(hash, x);
-  Uint8List buffer = new Uint8List(64);
+  ECSignature sig = deterministicGenerateK(hash, x, recover: recover);
+  Uint8List buffer = new Uint8List(65);
   buffer.setRange(0, 32, _encodeBigInt(sig.r));
   var s;
   if (sig.s.compareTo(nDiv2) > 0) {
     s = n - sig.s;
+    if (recover) {
+      final v = (sig as ECSignatureV).v ^ 1;
+      buffer[64] = v;
+    }
   } else {
     s = sig.s;
   }
   buffer.setRange(32, 64, _encodeBigInt(s));
-  return buffer;
+  return recover ? buffer : buffer.sublist(0, 64);
 }
 
 bool verify(Uint8List hash, Uint8List q, Uint8List signature) {
@@ -237,12 +241,12 @@ Uint8List getEncoded(ECPoint? P, compressed) {
   return P!.getEncoded(compressed);
 }
 
-ECSignature deterministicGenerateK(Uint8List hash, Uint8List x) {
+ECSignature deterministicGenerateK(Uint8List hash, Uint8List x, {bool recover = false}) {
   final signer = new ECDSASigner(null, new HMac(new SHA256Digest(), 64));
   var pkp = new PrivateKeyParameter(new ECPrivateKey(_decodeBigInt(x), secp256k1));
   signer.init(true, pkp);
 //  signer.init(false, new PublicKeyParameter(new ECPublicKey(secp256k1.curve.decodePoint(x), secp256k1)));
-  return signer.generateSignature(hash) as ECSignature;
+  return signer.generateSignature(hash, recover: recover) as ECSignature;
 }
 
 int _compare(Uint8List a, Uint8List b) {
